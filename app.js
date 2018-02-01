@@ -111,10 +111,8 @@ function sendIssueCreatedNotification(req, res) {
       fields: [
         {
           title: "Description",
-          // description splits on first {color} markup found due to crazy signatures
-          // ex: https://groupninemedia.slack.com/archives/G75DQNZ36/p1517511427000513
-          // TODO: make this split better
-          value: `${issue.fields.description.split('{color}')[0]}`,
+          // only send first 100 chars of the description to slack
+          value: `${issue.fields.description.slice(0, 100)}`,
           short: false
         }
       ]
