@@ -111,7 +111,10 @@ function sendIssueCreatedNotification(req, res) {
       fields: [
         {
           title: "Description",
-          value: `${issue.fields.description}`,
+          // description splits on first {color} markup found due to crazy signatures
+          // ex: https://groupninemedia.slack.com/archives/G75DQNZ36/p1517511427000513
+          // TODO: make this split better
+          value: `${issue.fields.description.split('{color}')[0]}`,
           short: false
         }
       ]
