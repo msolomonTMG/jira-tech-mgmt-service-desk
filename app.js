@@ -4,9 +4,7 @@ const
   express = require('express'),
   bodyParser = require('body-parser'),
   slack = require('./slack'),
-  slackChannels = {
-    techMgmtHelp: process.env.TECH_JIRA_SERVICE_DESK_URL
-  },
+  techMgmtHelpChannel = process.env.SLACK_CHANNEL_TECHMGMTHELP,
   request = require('request');
 
 var app = express();
@@ -17,12 +15,67 @@ app.use(bodyParser.urlencoded({
 }));
 app.use(bodyParser.json());
 
-app.post('/comment', function(req, res) {
+app.post('/', function(req, res) {
+  switch(req.body.webhookEvent) {
+    case 'jira:issue_updated':
+
+      switch(req.body.issue_event_type_name) {
+        case 'issue_commented':
+          sendCommentNotification(req, res)
+          break;
+        case 'issue_generic':
+          req.body.changelog.items.forEach(item => {
+            if (item.field && item.field == 'status' && item.toString.match(/Done|Closed/)) {
+              sendDoneNotification(req, res)
+              return
+            } else {
+              res.sendStatus(200)
+            }
+          })
+          break;
+        default:
+          res.sendStatus(200)
+      }
+      break;
+
+    case 'jira:issue_created':
+      sendIssueCreatedNotification(req, res)
+      break;
+    default:
+      res.sendStatus(200)
+  }
+})
+
+function sendDoneNotification(req, res) {
+  let issue = req.body.issue,
+      user = req.body.user,
+      jiraURL = issue.self.split('/rest/api')[0];
+
+  let text = `${user.displayName} transitioned an issue to ${issue.fields.status.name}`
+  let attachments = [
+    {
+      fallback: `${user.displayName} transitioned <${jiraURL}/browse/${issue.key}|${issue.key}: ${issue.fields.summary}> to ${issue.fields.status.name}`,
+      title: `<${jiraURL}/browse/${issue.key}|${issue.key}: ${issue.fields.summary}>`,
+      color: 'good',
+      thumb_url: `${user.avatarUrls["48x48"]}`,
+      fields: [
+        {
+          title: "Resolution",
+          value: `${issue.fields.resolution.name}`,
+          short: false
+        }
+      ]
+    }
+  ]
+  slack.sendMessage([techMgmtHelpChannel], text, attachments)
+    .then(success => { res.sendStatus(200) })
+    .catch(err => {res.sendStatus(500) })
+}
+
+function sendCommentNotification(req, res) {
   let comment = req.body.comment,
       issue = req.body.issue,
       jiraURL = issue.self.split('/rest/api')[0];
-
-  console.log(req.body)
 
   let text = `${comment.author.displayName} commented on an issue`
   let attachments = [
@@ -32,11 +85,6 @@ app.post('/comment', function(req, res) {
       thumb_url: `${comment.author.avatarUrls["48x48"]}`,
       fields: [
         {
-          title: "Reporter",
-          value: `${issue.fields.creator.displayName}`,
-          short: true
-        },
-        {
           title: "Comment",
           value: `${comment.body}`,
           short: false
@@ -44,32 +92,23 @@ app.post('/comment', function(req, res) {
       ]
     }
   ]
-  slack.sendMessage([slackChannels.techMgmtHelp], text, attachments)
-})
+  slack.sendMessage([techMgmtHelpChannel], text, attachments)
+    .then(success => { res.sendStatus(200) })
+    .catch(err => {res.sendStatus(500) })
+}
 
-app.post('/created', function(req, res) {
-  let issue = req.body.issue,
+function sendIssueCreatedNotification(req, res) {
+  let color,
+      issue = req.body.issue,
       jiraURL = issue.self.split('/rest/api')[0];
-      text = `A ${issue.fields.issuetype.name} has been created`,
-      color = '#205081';
-      
+
+  let text = `${issue.fields.creator.displayName} created an issue`
   let attachments = [
     {
       fallback: `${issue.fields.creator.name} created <${jiraURL}/browse/${issue.key}|${issue.key}: ${issue.fields.summary}>`,
-      color: color, // Can either be one of 'good', 'warning', 'danger', or any hex color code
       title: `<${jiraURL}/browse/${issue.key}|${issue.key}: ${issue.fields.summary}>`,
       thumb_url: `${issue.fields.creator.avatarUrls["48x48"]}`,
       fields: [
-        {
-          title: "Brand",
-          value: brand,
-          short: true
-        },
-        {
-          title: "Reporter",
-          value: `${issue.fields.creator.displayName}`,
-          short: true
-        },
         {
           title: "Description",
           value: `${issue.fields.description}`,
@@ -79,9 +118,11 @@ app.post('/created', function(req, res) {
     }
   ]
 
-  let urls = [slackChannels.techMgmtHelp]
+  let urls = [techMgmtHelpChannel]
   slack.sendMessage(urls, text, attachments)
-})
+    .then(success => { res.sendStatus(200) })
+    .catch(err => {res.sendStatus(500) })
+}
 
 app.listen(app.get('port'), function() {
   console.log('Node app is running on port', app.get('port'));
