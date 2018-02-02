@@ -112,7 +112,7 @@ function sendIssueCreatedNotification(req, res) {
         {
           title: "Description",
           // only send first 100 chars of the description to slack
-          value: `${issue.fields.description.slice(0, 100)}`,
+          value: `${issue.fields.description.slice(0, 100)}...`,
           short: false
         }
       ]
